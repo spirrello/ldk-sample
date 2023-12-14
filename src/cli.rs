@@ -1,3 +1,4 @@
+use crate::bitcoind_client::BitcoindClient;
 use crate::disk::{self, INBOUND_PAYMENTS_FNAME, OUTBOUND_PAYMENTS_FNAME};
 use crate::hex_utils;
 use crate::{
@@ -61,9 +62,10 @@ impl Writeable for UserOnionMessageContents {
 }
 
 pub(crate) fn poll_for_user_input(
-	peer_manager: Arc<PeerManager>, channel_manager: Arc<ChannelManager>,
-	keys_manager: Arc<KeysManager>, network_graph: Arc<NetworkGraph>,
-	onion_messenger: Arc<OnionMessenger>, inbound_payments: Arc<Mutex<InboundPaymentInfoStorage>>,
+	bitcoin_client: Arc<BitcoindClient>, peer_manager: Arc<PeerManager>,
+	channel_manager: Arc<ChannelManager>, keys_manager: Arc<KeysManager>,
+	network_graph: Arc<NetworkGraph>, onion_messenger: Arc<OnionMessenger>,
+	inbound_payments: Arc<Mutex<InboundPaymentInfoStorage>>,
 	outbound_payments: Arc<Mutex<OutboundPaymentInfoStorage>>, ldk_data_dir: String,
 	network: Network, logger: Arc<disk::FilesystemLogger>, fs_store: Arc<FilesystemStore>,
 ) {
@@ -451,6 +453,12 @@ pub(crate) fn poll_for_user_input(
 						Ok(()) => println!("SUCCESS: forwarded onion message to first hop"),
 						Err(e) => println!("ERROR: failed to send onion message: {:?}", e),
 					}
+				}
+				"walletbalance" => {
+					let runtime =
+						tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+					runtime.block_on(wallet_balance(bitcoin_client.clone()));
+					continue;
 				}
 				"quit" | "exit" => break,
 				_ => println!("Unknown command. See `\"help\" for available commands."),
@@ -850,4 +858,12 @@ pub(crate) fn parse_peer_info(
 	}
 
 	Ok((pubkey.unwrap(), peer_addr.unwrap().unwrap()))
+}
+
+async fn wallet_balance(bitcoin: Arc<BitcoindClient>) {
+	let params: &[serde_json::Value] =
+		&[serde_json::Value::String("*".to_string()), serde_json::Value::Number(6.into())];
+	let available_balance: serde_json::Value =
+		bitcoin.bitcoind_rpc_client.call_method("getbalance", params).await.unwrap();
+	println!("balance: {}", available_balance);
 }

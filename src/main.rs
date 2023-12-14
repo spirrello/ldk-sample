@@ -1022,6 +1022,7 @@ async fn start_ldk() {
 	let cli_peer_manager = Arc::clone(&peer_manager);
 	let cli_poll = tokio::task::spawn_blocking(move || {
 		cli::poll_for_user_input(
+			bitcoind_client,
 			cli_peer_manager,
 			cli_channel_manager,
 			keys_manager,
